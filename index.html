@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetSim Pro</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <header>
+        <div class="brand">
+            <i class="fa-solid fa-network-wired"></i>
+            NetSim Pro
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-primary" onclick="UI.openPingModal()">
+                <i class="fa-solid fa-play"></i> Probar Conectividad
+            </button>
+            <div style="width:1px; background:var(--border); height:24px; margin:0 5px;"></div>
+            <button class="btn"><i class="fa-solid fa-user"></i></button>
+        </div>
+    </header>
+
+    <main>
+        <aside>
+            <div class="sidebar-section">
+                <div class="sidebar-title">Dispositivos Finales</div>
+                <div class="component-grid">
+                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'PC')">
+                        <i class="fa-solid fa-desktop"></i>
+                        <span>PC</span>
+                    </div>
+                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'Server')">
+                        <i class="fa-solid fa-server"></i>
+                        <span>Servidor</span>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-title">Red & Enlaces</div>
+                <div class="component-grid">
+                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'Router')">
+                        <i class="fa-solid fa-wifi"></i>
+                        <span>Router</span>
+                    </div>
+                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'Switch')">
+                        <i class="fa-solid fa-code-branch"></i>
+                        <span>Switch</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <section id="workspace" ondrop="UI.handleDrop(event)" ondragover="UI.handleDragOver(event)">
+            <svg id="connections-layer" width="100%" height="100%">
+                <!-- Lines will be injected here -->
+            </svg>
+            <div class="canvas-toolbar">
+                <div class="tool-btn active" id="tool-pointer" onclick="UI.setTool('pointer')"
+                    title="Seleccionar/Mover">
+                    <i class="fa-solid fa-arrow-pointer"></i>
+                </div>
+                <div class="tool-btn" id="tool-connect" onclick="UI.setTool('connect')" title="Conectar">
+                    <i class="fa-solid fa-link"></i>
+                </div>
+                <div class="tool-btn" id="tool-delete" onclick="UI.deleteSelected()" title="Eliminar">
+                    <i class="fa-solid fa-trash"></i>
+                </div>
+            </div>
+            <!-- Devices will be injected here -->
+        </section>
+    </main>
+
+    <!-- Config Modal -->
+    <div class="modal-overlay" id="config-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fa-solid fa-gear"></i> Configuración de Dispositivo
+                </div>
+                <i class="fa-solid fa-xmark close-btn" onclick="UI.closeModals()"></i>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Nombre del Dispositivo</label>
+                    <input type="text" class="form-input" id="conf-name">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Dirección IP</label>
+                    <input type="text" class="form-input" id="conf-ip" placeholder="0.0.0.0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Máscara de Subred</label>
+                    <input type="text" class="form-input" id="conf-mask" placeholder="255.255.255.0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Puerta de Enlace (Gateway)</label>
+                    <input type="text" class="form-input" id="conf-gw" placeholder="0.0.0.0">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="UI.closeModals()">Cancelar</button>
+                <button class="btn btn-primary" onclick="UI.saveConfig()">Aplicar Cambios</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ping Console Modal -->
+    <div class="modal-overlay" id="ping-modal">
+        <div class="modal console-window">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fa-solid fa-terminal"></i> Consola de Conectividad
+                </div>
+                <i class="fa-solid fa-xmark close-btn" onclick="UI.closeModals()"></i>
+            </div>
+            <div class="modal-body">
+                <div style="display:flex; gap:10px; margin-bottom:10px;">
+                    <div style="flex:1;">
+                        <label class="form-label">Origen</label>
+                        <select id="ping-source" class="form-input"></select>
+                    </div>
+                    <div style="flex:1;">
+                        <label class="form-label">Destino</label>
+                        <select id="ping-target" class="form-input"></select>
+                    </div>
+                </div>
+                <button class="btn btn-primary" style="width:100%" onclick="UI.runPing()">
+                    <i class="fa-solid fa-play"></i> Ejecutar PING
+                </button>
+                <div class="console-output" id="ping-output">
+                    > Listos para iniciar prueba...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/NetworkLogic.js"></script>
+    <script src="js/Simulator.js"></script>
+</body>
+
+</html>
