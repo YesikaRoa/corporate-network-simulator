@@ -1,9 +1,13 @@
 :root {
-    --bg-dark: #0f172a; /* Slate 900 */
-    --bg-panel: #1e293b; /* Slate 800 */
-    --primary: #2563eb; /* Blue 600 */
+    --bg-dark: #0f172a;
+    /* Slate 900 */
+    --bg-panel: #1e293b;
+    /* Slate 800 */
+    --primary: #2563eb;
+    /* Blue 600 */
     --primary-hover: #1d4ed8;
-    --accent: #10b981; /* Emerald 500 */
+    --accent: #10b981;
+    /* Emerald 500 */
     --text-main: #f8fafc;
     --text-muted: #94a3b8;
     --border: #334155;
@@ -180,7 +184,7 @@ aside {
     cursor: pointer;
     z-index: 1;
     /* Center the anchor point */
-    transform: translate(-50%, -50%); 
+    transform: translate(-50%, -50%);
 }
 
 .device-icon-wrapper {
@@ -260,8 +264,15 @@ aside {
 }
 
 @keyframes slideIn {
-    from { transform: translateY(20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
 }
 
 .modal-header {
@@ -283,7 +294,10 @@ aside {
     cursor: pointer;
     color: var(--text-muted);
 }
-.close-btn:hover { color: white; }
+
+.close-btn:hover {
+    color: white;
+}
 
 .modal-body {
     padding: 20px;
@@ -342,9 +356,17 @@ aside {
     border: 1px solid var(--border);
 }
 
-.ping-success { color: var(--accent); }
-.ping-fail { color: #ef4444; }
-.ping-info { color: #3b82f6; }
+.ping-success {
+    color: var(--accent);
+}
+
+.ping-fail {
+    color: #ef4444;
+}
+
+.ping-info {
+    color: #3b82f6;
+}
 
 /* Toolbar on Canvas */
 .canvas-toolbar {
@@ -373,16 +395,68 @@ aside {
     transition: all 0.2s;
 }
 
-.tool-btn:hover { background: var(--bg-dark); color: white; }
-.tool-btn.active { background: var(--primary); color: white; }
+.tool-btn:hover {
+    background: var(--bg-dark);
+    color: white;
+}
+
+.tool-btn.active {
+    background: var(--primary);
+    color: white;
+}
 
 /* Connection Line */
 line {
     stroke: var(--primary);
     stroke-width: 2;
 }
-line:hover {
-    stroke: var(--accent);
-    stroke-width: 4;
+
+
+/* Interface List in Connection Modal */
+.interface-list {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.interface-item {
+    padding: 8px 12px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 4px;
     cursor: pointer;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.interface-item:hover:not(.disabled) {
+    border-color: var(--primary);
+    background: #1e293b;
+}
+
+.interface-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #0f172a;
+}
+
+.interface-item.selected {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+.interface-icon {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.interface-item.selected .interface-icon {
+    color: white;
 }

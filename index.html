@@ -37,6 +37,10 @@
                         <i class="fa-solid fa-desktop"></i>
                         <span>PC</span>
                     </div>
+                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'Laptop')">
+                        <i class="fa-solid fa-laptop"></i>
+                        <span>Laptop</span>
+                    </div>
                     <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'Server')">
                         <i class="fa-solid fa-server"></i>
                         <span>Servidor</span>
@@ -70,6 +74,9 @@
                 <div class="tool-btn" id="tool-connect" onclick="UI.setTool('connect')" title="Conectar">
                     <i class="fa-solid fa-link"></i>
                 </div>
+                <div class="tool-btn" id="tool-text" onclick="UI.setTool('text')" title="Agregar Texto">
+                    <i class="fa-solid fa-font"></i>
+                </div>
                 <div class="tool-btn" id="tool-delete" onclick="UI.deleteSelected()" title="Eliminar">
                     <i class="fa-solid fa-trash"></i>
                 </div>
@@ -77,6 +84,33 @@
             <!-- Devices will be injected here -->
         </section>
     </main>
+
+    <!-- Connection Modal -->
+    <div class="modal-overlay" id="connection-modal">
+        <div class="modal" style="width: 500px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fa-solid fa-plug"></i> Conectar Dispositivos
+                </div>
+                <i class="fa-solid fa-xmark close-btn" onclick="UI.closeModals()"></i>
+            </div>
+            <div class="modal-body">
+                <div style="display:flex; justify-content:space-between; gap:20px;">
+                    <div style="flex:1">
+                        <strong id="conn-src-name">Origen</strong>
+                        <div id="conn-src-list" class="interface-list"></div>
+                    </div>
+                    <div style="flex:1">
+                        <strong id="conn-target-name">Destino</strong>
+                        <div id="conn-target-list" class="interface-list"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="UI.closeModals()">Cancelar</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Config Modal -->
     <div class="modal-overlay" id="config-modal">
