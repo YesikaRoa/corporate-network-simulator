@@ -24,7 +24,7 @@
                 <i class="fa-solid fa-play"></i> Probar Conectividad
             </button>
             <div style="width:1px; background:var(--border); height:24px; margin:0 5px;"></div>
-            <button class="btn"><i class="fa-solid fa-user"></i></button>
+            <button class="btn" onclick="UI.toggleUserMenu()"><i class="fa-solid fa-user"></i></button>
         </div>
     </header>
 
@@ -176,6 +176,152 @@
         </div>
     </div>
 
+    <div class="dropdown-menu" id="user-menu">
+        <div class="dropdown-section">
+            <div class="dropdown-item" onclick="UI.toggleTheme()">
+                <i class="fa-solid fa-moon"></i> Modo Oscuro/Claro
+            </div>
+            <div class="dropdown-item" onclick="UI.toggleLabels()">
+                <i class="fa-solid fa-tag"></i> Mostrar/Ocultar Etiquetas
+            </div>
+            <div class="dropdown-item text-danger" onclick="UI.clearCanvas()">
+                <i class="fa-solid fa-trash-can"></i> Limpiar Lienzo
+            </div>
+        </div>
+        <div class="dropdown-divider"></div>
+        <div class="dropdown-section">
+            <div class="dropdown-header">PROYECTO</div>
+            <div class="dropdown-item" onclick="UI.saveProject()">
+                <i class="fa-solid fa-floppy-disk"></i> Guardar
+            </div>
+            <div class="dropdown-item" onclick="document.getElementById('load-json-input').click()">
+                <i class="fa-solid fa-folder-open"></i> Abrir
+            </div>
+            <div class="dropdown-item" onclick="UI.exportImage()">
+                <i class="fa-solid fa-image"></i> Exportar Imagen
+            </div>
+        </div>
+        <div class="dropdown-divider"></div>
+        <div class="dropdown-section">
+            <div class="dropdown-header">AYUDA</div>
+            <div class="dropdown-item" onclick="UI.showLogs()">
+                <i class="fa-solid fa-list-ul"></i> Historial de Ping
+            </div>
+            <div class="dropdown-item" onclick="UI.openHelpModal()">
+                <i class="fa-solid fa-circle-question"></i> Guía / Glosario
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Input for Loading -->
+    <input type="file" id="load-json-input" style="display: none;" accept=".netsim" onchange="UI.loadProject(event)">
+
+    <!-- Help Modal -->
+    <div class="modal-overlay" id="help-modal">
+        <div class="modal help-modal-width">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fa-solid fa-book-open"></i> Guía y Glosario
+                </div>
+                <i class="fa-solid fa-xmark close-btn" onclick="UI.closeModals()"></i>
+            </div>
+            <div class="modal-body custom-scroll">
+
+                <h4 class="section-title text-primary">Glosario</h4>
+                <div class="glossary-grid">
+                    <div class="glossary-item">
+                        <div class="glossary-icon"><i class="fa-solid fa-share-nodes"></i></div>
+                        <div class="glossary-content">
+                            <strong>Switch:</strong> Dispositivo que conecta equipos dentro de una misma red (LAN)
+                            usando direcciones MAC.
+                        </div>
+                    </div>
+                    <div class="glossary-item">
+                        <div class="glossary-icon"><i class="fa-solid fa-wifi"></i></div>
+                        <div class="glossary-content">
+                            <strong>Router:</strong> Dispositivo que conecta diferentes redes y dirige el tráfico entre
+                            ellas usando direcciones IP.
+                        </div>
+                    </div>
+                    <div class="glossary-item">
+                        <div class="glossary-icon"><i class="fa-solid fa-door-open"></i></div>
+                        <div class="glossary-content">
+                            <strong>Gateway:</strong> La dirección IP del Router que permite a un equipo salir a otras
+                            redes (Internet).
+                        </div>
+                    </div>
+                </div>
+
+                <h4 class="section-title text-primary" style="margin-top:20px;">Cómo usar</h4>
+                <ul class="usage-list">
+                    <li>Arrastra dispositivos desde la barra lateral al área de trabajo.</li>
+                    <li>Usa la herramienta <strong>Conectar</strong> para crear cables entre interfaces.</li>
+                    <li>Configura IPs haciendo clic en cada dispositivo (Puntero).</li>
+                </ul>
+
+                <h4 class="section-title text-primary" style="margin-top:20px;">Atajos</h4>
+                <div class="shortcuts-grid">
+                    <div class="shortcut-row">
+                        <div class="keys"><span class="key">Click</span></div>
+                        <div class="desc">Seleccionar / Configurar</div>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="keys"><span class="key">Supr</span> / <span class="key">Del</span></div>
+                        <div class="desc">Borrar dispositivo seleccionado</div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer" style="justify-content: flex-end;">
+                <button class="btn btn-primary" onclick="UI.closeModals()">Entendido</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logs Modal -->
+    <div class="modal-overlay" id="logs-modal">
+        <div class="modal" style="width: 600px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fa-solid fa-history"></i> Historial de Conectividad
+                </div>
+                <i class="fa-solid fa-xmark close-btn" onclick="UI.closeModals()"></i>
+            </div>
+            <div class="modal-body">
+                <div id="logs-container" class="console-output"
+                    style="background: var(--bg-dark); border: 1px solid var(--border);">
+                    No hay registros aún.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="UI.clearLogs()">Limpiar Logs</button>
+                <button class="btn" onclick="UI.closeModals()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <footer class="main-footer">
+        <div class="sidebar-footer"></div>
+        <div class="main-footer-content">
+            <div class="footer-section">
+                <i class="fa-solid fa-code"></i>
+                <span>INGENIERÍA DE SISTEMAS</span>
+            </div>
+            <div class="footer-section">
+                <span class="footer-label">UPTIME</span>
+                <span id="uptime-display">00:00:00</span>
+            </div>
+            <div class="footer-section">
+                <div class="status-indicator"></div>
+                <span>Simulación Activa</span>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="js/NetworkLogic.js"></script>
     <script src="js/Simulator.js"></script>
 </body>

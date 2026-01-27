@@ -12,6 +12,7 @@ class NetworkSimulator {
         this.nextId = 1;
         this.textLabels = []; // {id, x, y, text}
         this.nextTextId = 1;
+        this.logs = []; // Connectivity logs
     }
 
     addDevice(type, x, y) {
@@ -124,6 +125,11 @@ class NetworkSimulator {
 
         if (!source || !target) return { success: false, msg: "Dispositivo no encontrado" };
 
+        // Prevent self-ping
+        if (source.id === target.id) {
+            return { success: false, msg: "Error: No se puede hacer ping a sí mismo" };
+        }
+
         if (!this.checkPhysicalPath(source.id, target.id)) {
             return { success: false, msg: "Error: No existe conexión física (cable) entre los dispositivos" };
         }
@@ -134,32 +140,59 @@ class NetworkSimulator {
         let result = { success: false, msg: "Destination Host Unreachable" };
 
         if (target.type === 'Router') {
+            // Check if source and router are in same subnet (direct connection)
             const directlyConnectedInterface = target.interfaces.find(iface =>
                 NetworkUtils.isSameSubnet(source.ip, iface.ip, source.mask)
             );
-            if (directlyConnectedInterface) result = { success: true, msg: `Reply from ${directlyConnectedInterface.ip}: bytes=32 time=2ms TTL=255` };
-            else if (source.gateway) {
-                const isGateway = target.interfaces.some(i => i.ip === source.gateway);
-                if (isGateway) result = { success: true, msg: `Reply from ${source.gateway}: bytes=32 time=2ms TTL=255` };
-                else {
-                    const gatewayRouter = this.devices.find(d => d.type === 'Router' && d.interfaces.some(i => i.ip === source.gateway));
-                    if (gatewayRouter && gatewayRouter.id === target.id) result = { success: true, msg: `Reply from Router: bytes=32 time=3ms TTL=255` };
+
+            if (directlyConnectedInterface) {
+                result = { success: true, msg: `Reply from ${directlyConnectedInterface.ip}: bytes=32 time=2ms TTL=255` };
+            } else if (source.gateway) {
+                // Validate gateway is in same subnet as source
+                if (!NetworkUtils.isSameSubnet(source.ip, source.gateway, source.mask)) {
+                    return { success: false, msg: "Error: Gateway no está en la misma subred que el dispositivo origen" };
                 }
+
+                // Check if target router has the gateway IP
+                const isGateway = target.interfaces.some(i => i.ip === source.gateway);
+                if (isGateway) {
+                    result = { success: true, msg: `Reply from ${source.gateway}: bytes=32 time=2ms TTL=255` };
+                } else {
+                    // Check if gateway exists and can route to target
+                    const gatewayRouter = this.devices.find(d => d.type === 'Router' && d.interfaces.some(i => i.ip === source.gateway));
+                    if (gatewayRouter && gatewayRouter.id === target.id) {
+                        result = { success: true, msg: `Reply from Router: bytes=32 time=3ms TTL=255` };
+                    } else {
+                        result = { success: false, msg: "Destination Network Unreachable" };
+                    }
+                }
+            } else {
+                result = { success: false, msg: "Destination Host Unreachable (No Gateway configurado)" };
             }
         } else {
+            // Target is PC/Laptop/Server
             const sameSubnet = NetworkUtils.isSameSubnet(source.ip, target.ip, source.mask);
-            if (sameSubnet) result = { success: true, msg: `Reply from ${target.ip}: bytes=32 time=1ms TTL=64` };
-            else if (source.gateway) {
+            if (sameSubnet) {
+                result = { success: true, msg: `Reply from ${target.ip}: bytes=32 time=1ms TTL=64` };
+            } else if (source.gateway) {
+                // Validate gateway is in same subnet as source
+                if (!NetworkUtils.isSameSubnet(source.ip, source.gateway, source.mask)) {
+                    return { success: false, msg: "Error: Gateway no está en la misma subred que el dispositivo origen" };
+                }
+
                 const router = this.devices.find(d => d.type === 'Router' && d.interfaces.some(i => i.ip === source.gateway));
                 if (router) {
                     const targetSubnetIface = router.interfaces.find(i => NetworkUtils.isSameSubnet(i.ip, target.ip, i.mask));
-                    if (targetSubnetIface) result = { success: true, msg: `Reply from ${target.ip}: bytes=32 time=15ms TTL=54` };
-                    else result = { success: false, msg: "Destination Network Unreachable" };
+                    if (targetSubnetIface) {
+                        result = { success: true, msg: `Reply from ${target.ip}: bytes=32 time=15ms TTL=54` };
+                    } else {
+                        result = { success: false, msg: "Destination Network Unreachable" };
+                    }
                 } else {
                     result = { success: false, msg: "Request timed out (Gateway unreachable)" };
                 }
             } else {
-                result = { success: false, msg: "Destination Host Unreachable (No Gateway)" };
+                result = { success: false, msg: "Destination Host Unreachable (No Gateway configurado)" };
             }
         }
 
@@ -298,10 +331,31 @@ const UI = {
                     this.openConnectionModal(this.connectStartId, id);
                 }
             }
+        } else if (this.currentTool === 'delete') {
+            this.showConfirm('¿Eliminar dispositivo?', () => {
+                sim.removeDevice(id);
+                this.selectedDeviceId = null;
+                this.render();
+                this.showToast('Dispositivo eliminado', 'success');
+            });
         } else if (this.currentTool === 'pointer') {
             this.selectedDeviceId = id;
             this.openConfigModal(id);
             this.render();
+        }
+    },
+
+    deleteSelected() {
+        if (this.selectedDeviceId) {
+            this.showConfirm('¿Eliminar dispositivo seleccionado?', () => {
+                sim.removeDevice(this.selectedDeviceId);
+                this.selectedDeviceId = null;
+                this.render();
+                this.showToast('Dispositivo eliminado', 'success');
+            });
+        } else {
+            // If called from toolbar button, just set the tool
+            this.setTool('delete');
         }
     },
 
@@ -386,10 +440,11 @@ const UI = {
                 }
             };
             el.ondblclick = (e) => {
-                if (confirm('¿Eliminar etiqueta?')) {
+                this.showConfirm('¿Eliminar etiqueta?', () => {
                     sim.textLabels = sim.textLabels.filter(l => l.id !== lbl.id);
                     this.render();
-                }
+                    this.showToast('Etiqueta eliminada', 'success');
+                });
             };
 
             workspace.appendChild(el);
@@ -512,7 +567,7 @@ const UI = {
     drawLinkLight(svg, x1, y1, x2, y2, status) {
         // Calculate position slightly offset from x1,y1 towards x2,y2
         const angle = Math.atan2(y2 - y1, x2 - x1);
-        const dist = 35; // distance from center
+        const dist = 60; // distance from center (increased to clear labels)
         const tx = x1 + dist * Math.cos(angle);
         const ty = y1 + dist * Math.sin(angle);
 
@@ -555,8 +610,8 @@ const UI = {
             html += `<div style="max-height: 300px; overflow-y:auto; margin-top:10px;">`;
             d.interfaces.forEach((iface, idx) => {
                 html += `
-                    <div style="background:#151f32; padding:10px; margin-bottom:5px; border-radius:4px;">
-                        <div style="color:var(--primary); font-size:0.8rem; font-weight:bold;">${iface.name} (${iface.type})</div>
+                    <div class="interface-group">
+                        <div class="interface-title">${iface.name} (${iface.type})</div>
                         ${iface.type === 'ethernet' || iface.type === 'serial' ? `
                             <div style="display:flex; gap:5px; margin-top:5px;">
                                 <input type="text" class="form-input" id="conf-if-ip-${idx}" value="${iface.ip}" placeholder="IP">
@@ -587,6 +642,42 @@ const UI = {
             const d = sim.getDevice(this.selectedDeviceId);
             d.name = document.getElementById('conf-name').value;
 
+            // Collect new IPs to validate
+            const newIPs = [];
+
+            d.interfaces.forEach((iface, idx) => {
+                const ipEl = document.getElementById(`conf-if-ip-${idx}`);
+                const maskEl = document.getElementById(`conf-if-mask-${idx}`);
+                if (ipEl && ipEl.value.trim()) {
+                    newIPs.push(ipEl.value.trim());
+                }
+            });
+
+            // Check for duplicate IPs across all devices
+            for (const ip of newIPs) {
+                if (!ip) continue;
+
+                // Check against other devices
+                for (const device of sim.devices) {
+                    if (device.id === d.id) continue; // Skip self
+
+                    // Check device main IP
+                    if (device.ip === ip) {
+                        this.showToast(`Error: La IP ${ip} ya está asignada a ${device.name}`, 'error');
+                        return;
+                    }
+
+                    // Check all interfaces
+                    for (const iface of device.interfaces) {
+                        if (iface.ip === ip) {
+                            this.showToast(`Error: La IP ${ip} ya está asignada a ${device.name} (${iface.name})`, 'error');
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // If validation passed, save the configuration
             d.interfaces.forEach((iface, idx) => {
                 const ipEl = document.getElementById(`conf-if-ip-${idx}`);
                 const maskEl = document.getElementById(`conf-if-mask-${idx}`);
@@ -605,6 +696,7 @@ const UI = {
 
             this.render();
             this.closeModals();
+            this.showToast('Configuración guardada correctamente', 'success');
         }
     },
 
@@ -633,6 +725,19 @@ const UI = {
 
         consoleOut.innerHTML += `\n> ping...`;
         const res = sim.testConnectivity(sId, tId);
+
+        // Log result
+        const sDevice = sim.getDevice(sId);
+        const tDevice = sim.getDevice(tId);
+        const logEntry = {
+            time: new Date().toLocaleTimeString(),
+            source: sDevice ? sDevice.name : 'Unknown',
+            target: tDevice ? tDevice.name : 'Unknown',
+            status: res.success ? 'Success' : 'Fail',
+            msg: res.success ? 'Éxito' : res.msg
+        };
+        sim.logs.unshift(logEntry); // Add to beginning
+
         const resClass = res.success ? 'ping-success' : 'ping-fail';
         consoleOut.innerHTML += `\n<span class="${resClass}">${res.msg}</span>`;
         consoleOut.scrollTop = consoleOut.scrollHeight;
@@ -640,8 +745,244 @@ const UI = {
 
     closeModals() {
         document.querySelectorAll('.modal-overlay').forEach(el => el.classList.remove('active'));
+    },
+
+    // --- User Menu Features ---
+    toggleUserMenu() {
+        const menu = document.getElementById('user-menu');
+        menu.classList.toggle('active');
+
+        // Close when clicking outside
+        if (menu.classList.contains('active')) {
+            setTimeout(() => {
+                document.addEventListener('click', this.closeUserMenuOutside);
+            }, 0);
+        }
+    },
+
+    closeUserMenuOutside(e) {
+        const menu = document.getElementById('user-menu');
+        if (!menu.contains(e.target) && !e.target.closest('.btn')) {
+            menu.classList.remove('active');
+            document.removeEventListener('click', UI.closeUserMenuOutside);
+        }
+    },
+
+    toggleTheme() {
+        document.body.classList.toggle('light-mode');
+        this.toggleUserMenu(); // Close menu
+    },
+
+    toggleLabels() {
+        document.body.classList.toggle('hide-labels');
+        this.toggleUserMenu();
+    },
+
+    clearCanvas() {
+        this.showConfirm('¿Estás seguro de borrar todo el diseño? Esta acción no se puede deshacer.', () => {
+            sim.devices = [];
+            sim.textLabels = [];
+            sim.nextId = 1;
+            sim.nextTextId = 1;
+            this.render();
+            this.toggleUserMenu();
+            this.showToast('Lienzo limpiado', 'info');
+        });
+    },
+
+    // --- Project Features ---
+    saveProject() {
+        const data = {
+            devices: sim.devices,
+            textLabels: sim.textLabels,
+            nextId: sim.nextId,
+            nextTextId: sim.nextTextId,
+            timestamp: new Date().toISOString()
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'ejercicio_red.netsim';
+        a.click();
+        URL.revokeObjectURL(url);
+        this.toggleUserMenu();
+    },
+
+    // --- Toast Notifications ---
+    showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+
+        let icon = 'fa-circle-info';
+        if (type === 'success') icon = 'fa-circle-check';
+        if (type === 'error') icon = 'fa-triangle-exclamation';
+
+        toast.innerHTML = `
+            <i class="fa-solid ${icon}"></i>
+            <div class="toast-content">${message}</div>
+        `;
+
+        container.appendChild(toast);
+
+        // Remove after 3 seconds
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => {
+                if (toast.parentElement) toast.remove();
+            }, 300);
+        }, 3000);
+    },
+
+    // Custom Confirmation Modal
+    showConfirm(message, onConfirm) {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay active';
+        overlay.style.zIndex = '10000';
+
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.maxWidth = '400px';
+
+        modal.innerHTML = `
+            <div class="modal-header">
+                <div class="modal-title"><i class="fa-solid fa-circle-question"></i> Confirmación</div>
+            </div>
+            <div class="modal-body">
+                <p>${message}</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" id="confirm-cancel">Cancelar</button>
+                <button class="btn btn-primary" id="confirm-ok">Aceptar</button>
+            </div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        const close = () => overlay.remove();
+
+        modal.querySelector('#confirm-cancel').onclick = close;
+        modal.querySelector('#confirm-ok').onclick = () => {
+            close();
+            onConfirm();
+        };
+    },
+
+    loadProject(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = JSON.parse(e.target.result);
+                sim.devices = data.devices || [];
+                sim.textLabels = data.textLabels || [];
+                sim.nextId = data.nextId || 1;
+                sim.nextTextId = data.nextTextId || 1;
+
+                // Restore object methods (Device class handling) if needed, 
+                // but since we use raw objects mostly, we need to ensure 'Device' instance methods work.
+                // Re-instantiate Devices to keep prototype methods active
+                sim.devices = sim.devices.map(d => {
+                    const dev = new Device(d.id, d.type, d.name, d.ip, d.mask, d.gateway, d.x, d.y);
+                    dev.interfaces = d.interfaces; // Restore interfaces
+                    dev.connections = d.connections || []; // Restore physical connections
+                    return dev;
+                });
+
+                this.render();
+                this.showToast('Ejercicio cargado correctamente', 'success');
+            } catch (err) {
+                this.showToast('Error al cargar el archivo de ejercicio', 'error');
+                console.error(err);
+            }
+        };
+        reader.readAsText(file);
+        this.toggleUserMenu();
+        event.target.value = ''; // Reset input
+    },
+
+    exportImage() {
+        this.toggleUserMenu();
+        const workspace = document.getElementById('workspace');
+        // Temporarily hide toolbar for screenshot
+        document.querySelector('.canvas-toolbar').style.display = 'none';
+
+        // Determine background color based on theme
+        const isLight = document.body.classList.contains('light-mode');
+        const bgColor = isLight ? '#f1f5f9' : '#0f172a';
+
+        html2canvas(workspace, { backgroundColor: bgColor }).then(canvas => {
+            const link = document.createElement('a');
+            link.download = 'network_diagram.png';
+            link.href = canvas.toDataURL();
+            link.click();
+
+            // Restore toolbar
+            document.querySelector('.canvas-toolbar').style.display = 'flex';
+        });
+    },
+
+    // --- Help / Logs ---
+    openHelpModal() {
+        document.getElementById('help-modal').classList.add('active');
+        this.toggleUserMenu();
+    },
+
+    showLogs() {
+        const container = document.getElementById('logs-container');
+        if (sim.logs.length === 0) {
+            container.innerHTML = 'No hay registros aún.';
+        } else {
+            container.innerHTML = sim.logs.map(l => `
+                <div style="border-bottom:1px solid #333; padding:5px 0;">
+                    <span style="color:var(--text-muted); font-size:0.8em;">[${l.time}]</span>
+                    <strong style="color:var(--primary)">${l.source}</strong> &rarr; 
+                    <strong style="color:var(--primary)">${l.target}</strong> : 
+                    <span style="${l.status === 'Success' ? 'color:var(--accent)' : 'color:#ef4444'}">${l.msg}</span>
+                </div>
+            `).join('');
+        }
+        document.getElementById('logs-modal').classList.add('active');
+        this.toggleUserMenu();
+    },
+
+    clearLogs() {
+        sim.logs = [];
+        this.showLogs();
+    },
+
+    // --- Uptime Counter ---
+    startUptime() {
+        const startTime = Date.now();
+        setInterval(() => {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const hours = Math.floor(elapsed / 3600).toString().padStart(2, '0');
+            const minutes = Math.floor((elapsed % 3600) / 60).toString().padStart(2, '0');
+            const seconds = (elapsed % 60).toString().padStart(2, '0');
+            const display = document.getElementById('uptime-display');
+            if (display) {
+                display.textContent = `${hours}:${minutes}:${seconds}`;
+            }
+        }, 1000);
     }
 };
 
 document.getElementById('workspace').addEventListener('click', (e) => UI.handleWorkspaceClick(e));
+
+// Global Keyboard Shortcuts
+document.addEventListener('keydown', (e) => {
+    // Delete / Backspace to remove selected device
+    if ((e.key === 'Delete' || e.key === 'Backspace') && UI.selectedDeviceId) {
+        // Prevent backspace from navigating back if not in input
+        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+            UI.deleteSelected();
+        }
+    }
+});
+
 UI.init();
+UI.startUptime();
