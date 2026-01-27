@@ -13,19 +13,47 @@ class NetworkUtils {
     }
 }
 
+class Interface {
+    constructor(name, type = 'ethernet', ip = '', mask = '') {
+        this.name = name;
+        this.type = type; // 'ethernet', 'serial', 'console'
+        this.ip = ip;
+        this.mask = mask;
+        this.connectedDeviceId = null;
+        this.connectedInterfaceName = null;
+    }
+}
+
 class Device {
     constructor(id, type, name, ip, mask, gateway, x = 0, y = 0) {
         this.id = id;
-        this.type = type; // 'PC', 'Server', 'Switch', 'Router'
+        this.type = type; // 'PC', 'Laptop', 'Server', 'Switch', 'Router'
         this.name = name;
+
+        // For PCs/Servers
         this.ip = ip || '';
         this.mask = mask || '';
         this.gateway = gateway || '';
+
+        // For Routers (and potentially others)
+        this.interfaces = [];
+
         this.x = x;
         this.y = y;
-        this.connections = []; // List of connected device IDs
+        this.connections = []; // Visual/Physical connections list (IDs)
+        this.metadata = {}; // specific icons, etc.
     }
 
+    addInterface(name, type = 'ethernet', ip = '', mask = '') {
+        this.interfaces.push(new Interface(name, type, ip, mask));
+    }
+
+    getInterface(name) {
+        return this.interfaces.find(i => i.name === name);
+    }
+
+    // Connect logic now needs to be aware of interfaces for Routers
+    // But for physical connection visualization, we keep simple ID tracking
     connect(deviceId) {
         if (!this.connections.includes(deviceId)) {
             this.connections.push(deviceId);
@@ -34,5 +62,11 @@ class Device {
 
     disconnect(deviceId) {
         this.connections = this.connections.filter(id => id !== deviceId);
+        // Also clear interface connection if applicable
+        this.interfaces.forEach(iface => {
+            if (iface.connectedDeviceId === deviceId) {
+                iface.connectedDeviceId = null;
+            }
+        });
     }
 }
