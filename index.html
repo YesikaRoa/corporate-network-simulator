@@ -15,13 +15,31 @@
 
 <body>
     <header>
-        <div class="brand">
-            <i class="fa-solid fa-network-wired"></i>
-            NetSim Pro
+        <div class="header-left">
+            <button class="btn sidebar-toggle" onclick="UI.toggleSidebar()" title="Mostrar/Ocultar Panel">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="brand">
+                <i class="fa-solid fa-network-wired"></i>
+                NetSim Pro
+            </div>
         </div>
         <div class="header-actions">
+            <div class="zoom-controls">
+                <button class="btn" onclick="UI.zoomOut()" title="Alejar">
+                    <i class="fa-solid fa-minus"></i>
+                </button>
+                <span id="zoom-level">100%</span>
+                <button class="btn" onclick="UI.zoomIn()" title="Acercar">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+                <button class="btn" onclick="UI.resetZoom()" title="Restablecer Zoom">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+            </div>
+            <div style="width:1px; background:var(--border); height:24px; margin:0 5px;"></div>
             <button class="btn btn-primary" onclick="UI.openPingModal()">
-                <i class="fa-solid fa-play"></i> Probar Conectividad
+                <i class="fa-solid fa-play"></i><span class="btn-text"></span> Probar Conectividad</span>
             </button>
             <div style="width:1px; background:var(--border); height:24px; margin:0 5px;"></div>
             <button class="btn" onclick="UI.toggleUserMenu()"><i class="fa-solid fa-user"></i></button>
@@ -192,10 +210,10 @@
         <div class="dropdown-section">
             <div class="dropdown-header">PROYECTO</div>
             <div class="dropdown-item" onclick="UI.saveProject()">
-                <i class="fa-solid fa-floppy-disk"></i> Guardar
+                <i class="fa-solid fa-floppy-disk"></i> Guardar Archivo
             </div>
             <div class="dropdown-item" onclick="document.getElementById('load-json-input').click()">
-                <i class="fa-solid fa-folder-open"></i> Abrir
+                <i class="fa-solid fa-folder-open"></i> Abrir Archivo
             </div>
             <div class="dropdown-item" onclick="UI.exportImage()">
                 <i class="fa-solid fa-image"></i> Exportar Imagen
@@ -307,11 +325,13 @@
         <div class="sidebar-footer"></div>
         <div class="main-footer-content">
             <div class="footer-section">
-                <i class="fa-solid fa-code"></i>
-                <span>INGENIERÍA DE SISTEMAS</span>
+                <span class="footer-icon">🖧</span>
+                <span class="footer-brand">NetSim Pro</span>
+                <span class="footer-subtitle">— Network Simulation Professional · © <span
+                        id="current-year"></span></span>
             </div>
             <div class="footer-section">
-                <span class="footer-label">UPTIME</span>
+                <span class="footer-label">TIEMPO ACTIVO</span>
                 <span id="uptime-display">00:00:00</span>
             </div>
             <div class="footer-section">

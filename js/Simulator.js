@@ -134,74 +134,113 @@ class NetworkSimulator {
             return { success: false, msg: "Error: No existe conexión física (cable) entre los dispositivos" };
         }
 
-        if (!source.ip) return { success: false, msg: "Error: Configuración IP faltante en Origen" };
-        if (target.type !== 'Router' && !target.ip) return { success: false, msg: "Error: Configuración IP faltante en Destino" };
+        if (!source.ip && source.type !== 'Router') return { success: false, msg: "Error: Configuración IP faltante en Origen" };
+        // Router might behave without global IP if we ping from an interface, but here we assume general device ping
 
-        let result = { success: false, msg: "Destination Host Unreachable" };
+        let result = { success: false, msg: "Tiempo de espera agotado" };
 
-        if (target.type === 'Router') {
-            // Check if source and router are in same subnet (direct connection)
-            const directlyConnectedInterface = target.interfaces.find(iface =>
-                NetworkUtils.isSameSubnet(source.ip, iface.ip, source.mask)
-            );
-
-            if (directlyConnectedInterface) {
-                result = { success: true, msg: `Reply from ${directlyConnectedInterface.ip}: bytes=32 time=2ms TTL=255` };
-            } else if (source.gateway) {
-                // Validate gateway is in same subnet as source
-                if (!NetworkUtils.isSameSubnet(source.ip, source.gateway, source.mask)) {
-                    return { success: false, msg: "Error: Gateway no está en la misma subred que el dispositivo origen" };
-                }
-
-                // Check if target router has the gateway IP
-                const isGateway = target.interfaces.some(i => i.ip === source.gateway);
-                if (isGateway) {
-                    result = { success: true, msg: `Reply from ${source.gateway}: bytes=32 time=2ms TTL=255` };
-                } else {
-                    // Check if gateway exists and can route to target
-                    const gatewayRouter = this.devices.find(d => d.type === 'Router' && d.interfaces.some(i => i.ip === source.gateway));
-                    if (gatewayRouter && gatewayRouter.id === target.id) {
-                        result = { success: true, msg: `Reply from Router: bytes=32 time=3ms TTL=255` };
-                    } else {
-                        result = { success: false, msg: "Destination Network Unreachable" };
-                    }
-                }
-            } else {
-                result = { success: false, msg: "Destination Host Unreachable (No Gateway configurado)" };
+        if (this.checkRoutingPath(source, target)) {
+            // Generate success message with plausible TTL and Time
+            // Distance estimation could be improved but constant is fine for now
+            let replyIP = target.ip;
+            if (target.type === 'Router') {
+                // Try to pick an IP that is reachable or just the first one
+                const reachableIface = target.interfaces.find(i => i.ip);
+                replyIP = reachableIface ? reachableIface.ip : 'Router';
             }
+            result = { success: true, msg: `Respuesta desde ${replyIP}: bytes=32 tiempo=5ms TTL=248` };
         } else {
-            // Target is PC/Laptop/Server
-            const sameSubnet = NetworkUtils.isSameSubnet(source.ip, target.ip, source.mask);
-            if (sameSubnet) {
-                result = { success: true, msg: `Reply from ${target.ip}: bytes=32 time=1ms TTL=64` };
-            } else if (source.gateway) {
-                // Validate gateway is in same subnet as source
-                if (!NetworkUtils.isSameSubnet(source.ip, source.gateway, source.mask)) {
-                    return { success: false, msg: "Error: Gateway no está en la misma subred que el dispositivo origen" };
-                }
-
-                const router = this.devices.find(d => d.type === 'Router' && d.interfaces.some(i => i.ip === source.gateway));
-                if (router) {
-                    const targetSubnetIface = router.interfaces.find(i => NetworkUtils.isSameSubnet(i.ip, target.ip, i.mask));
-                    if (targetSubnetIface) {
-                        result = { success: true, msg: `Reply from ${target.ip}: bytes=32 time=15ms TTL=54` };
-                    } else {
-                        result = { success: false, msg: "Destination Network Unreachable" };
-                    }
-                } else {
-                    result = { success: false, msg: "Request timed out (Gateway unreachable)" };
-                }
+            if (source.gateway && !NetworkUtils.isSameSubnet(source.ip, source.gateway, source.mask)) {
+                result = { success: false, msg: "Error: Gateway inalcanzable (fuera de subred)" };
             } else {
-                result = { success: false, msg: "Destination Host Unreachable (No Gateway configurado)" };
+                result = { success: false, msg: "Red de destino inalcanzable" };
             }
         }
 
         // Append Explicit Success Message
         if (result.success) {
-            result.msg += "\n\nPing statistics for " + (target.type === 'Router' ? 'Router' : target.ip) + ":\n    Packets: Sent = 4, Received = 4, Lost = 0 (0% loss)";
+            const targetName = target.type === 'Router' ? 'Router' : target.ip;
+            result.msg += `\n\nEstadísticas de ping para ${targetName}:\n    Paquetes: Enviados = 4, Recibidos = 4, Perdidos = 0 (0% perdidos)`;
         }
 
         return result;
+    }
+
+    checkRoutingPath(source, target) {
+        // 1. Check Direct Connection (Same Subnet)
+        const sourceIPs = source.type === 'Router' ? source.interfaces.map(i => i.ip).filter(ip => ip) : (source.ip ? [source.ip] : []);
+        const targetIPs = target.type === 'Router' ? target.interfaces.map(i => i.ip).filter(ip => ip) : (target.ip ? [target.ip] : []);
+
+        for (let sip of sourceIPs) {
+            let sMask = source.type === 'Router' ? source.interfaces.find(i => i.ip === sip).mask : source.mask;
+            if (!sMask) continue;
+            for (let tip of targetIPs) {
+                if (NetworkUtils.isSameSubnet(sip, tip, sMask)) return true;
+            }
+        }
+
+        // 2. Identify Start Router for Routing
+        let startRouter = null;
+
+        if (source.type === 'Router') {
+            startRouter = source;
+        } else {
+            // PC/Laptop/Server
+            if (!source.gateway) return false; // No Gateway
+
+            // Check if Gateway is reachable (same subnet)
+            if (!NetworkUtils.isSameSubnet(source.ip, source.gateway, source.mask)) return false;
+
+            // Find Gateway Device
+            startRouter = this.devices.find(d => d.type === 'Router' && d.interfaces.some(i => i.ip === source.gateway));
+            if (!startRouter) return false; // Gateway device not found or not a Router
+        }
+
+        // 3. BFS Routing
+        return this.findPathBFS(startRouter, target);
+    }
+
+    findPathBFS(startRouter, targetDevice) {
+        if (startRouter.id === targetDevice.id) return true;
+
+        let visited = new Set();
+        let queue = [startRouter];
+        visited.add(startRouter.id);
+
+        while (queue.length > 0) {
+            let current = queue.shift();
+
+            // Check if current router can directly reach target
+            const targetIPs = targetDevice.type === 'Router' ? targetDevice.interfaces.map(i => i.ip).filter(ip => ip) : [targetDevice.ip];
+
+            for (let iface of current.interfaces) {
+                if (!iface.ip || !iface.mask) continue;
+                for (let tip of targetIPs) {
+                    if (tip && NetworkUtils.isSameSubnet(iface.ip, tip, iface.mask)) {
+                        return true; // Target is directly connected to this router
+                    }
+                }
+            }
+
+            // Queue Neighbors
+            for (let iface of current.interfaces) {
+                if (iface.connectedDeviceId) {
+                    const neighbor = this.getDevice(iface.connectedDeviceId);
+                    if (neighbor && neighbor.type === 'Router' && !visited.has(neighbor.id)) {
+                        // Verify Logical Link (Layer 3 connectivity)
+                        const neighborIface = neighbor.getInterface(iface.connectedInterfaceName);
+                        // Check strictly if both sides have IP and match subnet
+                        if (neighborIface && neighborIface.ip && iface.ip && iface.mask) {
+                            if (NetworkUtils.isSameSubnet(iface.ip, neighborIface.ip, iface.mask)) {
+                                visited.add(neighbor.id);
+                                queue.push(neighbor);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     checkPhysicalPath(startId, endId) {
@@ -238,9 +277,24 @@ const UI = {
     currentTool: 'pointer', // 'pointer' | 'connect' | 'text'
     connectStartId: null,
     draggedTextId: null, // For moving text
+    zoomLevel: 1, // Zoom level (1 = 100%)
+    sidebarCollapsed: false,
 
     init() {
+        // Check if on mobile/tablet and collapse sidebar by default BEFORE rendering
+        if (window.innerWidth <= 1024) {
+            this.sidebarCollapsed = true;
+            const sidebar = document.querySelector('aside');
+            const footer = document.querySelector('.sidebar-footer');
+            if (sidebar) {
+                sidebar.classList.add('collapsed');
+            }
+            if (footer) {
+                footer.style.width = '0';
+            }
+        }
         this.render();
+        this.updateZoomDisplay();
     },
 
     setTool(tool) {
@@ -421,25 +475,33 @@ const UI = {
             }
         });
 
-        // Render Labels
-        sim.textLabels.forEach(lbl => {
+        // Render Text Labels
+        sim.textLabels.forEach((lbl, idx) => {
+            // Create container for label + delete button
+            const container = document.createElement('div');
+            container.className = 'text-label-container';
+            container.style.position = 'absolute';
+            container.style.left = `${lbl.x * this.zoomLevel}px`;
+            container.style.top = `${lbl.y * this.zoomLevel}px`;
+            container.style.transform = `scale(${this.zoomLevel})`;
+            container.style.transformOrigin = 'top left';
+            container.style.display = 'inline-flex';
+            container.style.alignItems = 'center';
+            container.style.gap = '8px';
+
+            // Text label element
             const el = document.createElement('div');
             el.className = 'text-label';
-            el.style.position = 'absolute';
-            el.style.left = `${lbl.x}px`;
-            el.style.top = `${lbl.y}px`;
             el.style.color = 'var(--text-main)';
             el.style.cursor = 'move';
             el.innerText = lbl.text;
 
-            // Allow drag/delete text
-            el.draggable = true;
-            el.ondragstart = (e) => {
-                if (this.currentTool === 'pointer' || this.currentTool === 'text') {
-                    e.dataTransfer.setData('moveTextId', lbl.id);
-                }
-            };
-            el.ondblclick = (e) => {
+            // Delete button
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'text-label-delete-btn';
+            deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+            deleteBtn.onclick = (e) => {
+                e.stopPropagation();
                 this.showConfirm('¿Eliminar etiqueta?', () => {
                     sim.textLabels = sim.textLabels.filter(l => l.id !== lbl.id);
                     this.render();
@@ -447,15 +509,69 @@ const UI = {
                 });
             };
 
-            workspace.appendChild(el);
+            container.appendChild(el);
+            container.appendChild(deleteBtn);
+
+            // Allow drag for desktop
+            container.draggable = true;
+            container.ondragstart = (e) => {
+                if (this.currentTool === 'pointer' || this.currentTool === 'text') {
+                    e.dataTransfer.setData('moveTextId', lbl.id);
+                }
+            };
+
+            // Touch support for mobile
+            let touchStartX, touchStartY, labelStartX, labelStartY;
+            let isTouchDragging = false;
+
+            container.addEventListener('touchstart', (e) => {
+                if (this.currentTool === 'pointer' || this.currentTool === 'text') {
+                    const touch = e.touches[0];
+                    touchStartX = touch.clientX;
+                    touchStartY = touch.clientY;
+                    labelStartX = lbl.x;
+                    labelStartY = lbl.y;
+                    isTouchDragging = true;
+                    container.style.opacity = '0.7';
+                    e.preventDefault();
+                }
+            });
+
+            container.addEventListener('touchmove', (e) => {
+                if ((this.currentTool === 'pointer' || this.currentTool === 'text') && isTouchDragging) {
+                    const touch = e.touches[0];
+                    const deltaX = (touch.clientX - touchStartX) / this.zoomLevel;
+                    const deltaY = (touch.clientY - touchStartY) / this.zoomLevel;
+
+                    lbl.x = labelStartX + deltaX;
+                    lbl.y = labelStartY + deltaY;
+
+                    // Update position in real-time
+                    container.style.left = `${lbl.x * this.zoomLevel}px`;
+                    container.style.top = `${lbl.y * this.zoomLevel}px`;
+
+                    e.preventDefault();
+                }
+            });
+
+            container.addEventListener('touchend', (e) => {
+                if ((this.currentTool === 'pointer' || this.currentTool === 'text') && isTouchDragging) {
+                    container.style.opacity = '1';
+                    isTouchDragging = false;
+                }
+            });
+
+            workspace.appendChild(container);
         });
 
         // Render Devices
         sim.devices.forEach(d => {
             const el = document.createElement('div');
             el.className = `device ${this.selectedDeviceId === d.id ? 'selected' : ''}`;
-            el.style.left = `${d.x}px`;
-            el.style.top = `${d.y}px`;
+            el.dataset.deviceId = d.id;
+            el.style.left = `${d.x * this.zoomLevel}px`;
+            el.style.top = `${d.y * this.zoomLevel}px`;
+            el.style.transform = `translate(-50%, -50%) scale(${this.zoomLevel})`;
             if (this.connectStartId === d.id) el.style.opacity = '0.7';
 
             let ipLabel = d.ip;
@@ -474,22 +590,61 @@ const UI = {
             el.onclick = (e) => this.handleDeviceClick(e, d.id);
             el.draggable = true;
             el.ondragstart = (e) => {
-                // Important: Stop propagation so we don't drag text if overlapping? 
-                // Actually standard drag event handles target.
                 if (this.currentTool === 'pointer') e.dataTransfer.setData('moveId', d.id);
                 else e.preventDefault();
             };
 
-            // Handle Drop for both devices and text
-            // Drop listener is on Workspace, but we need dragend here to update coords
             el.ondragend = (e) => {
                 if (this.currentTool === 'pointer') {
                     const rect = workspace.getBoundingClientRect();
-                    d.x = e.clientX - rect.left;
-                    d.y = e.clientY - rect.top;
+                    d.x = (e.clientX - rect.left) / this.zoomLevel;
+                    d.y = (e.clientY - rect.top) / this.zoomLevel;
                     this.render();
                 }
             }
+
+            // Touch support for mobile
+            let touchStartX, touchStartY, deviceStartX, deviceStartY;
+            let isTouchDragging = false;
+
+            el.addEventListener('touchstart', (e) => {
+                if (this.currentTool === 'pointer') {
+                    const touch = e.touches[0];
+                    touchStartX = touch.clientX;
+                    touchStartY = touch.clientY;
+                    deviceStartX = d.x;
+                    deviceStartY = d.y;
+                    isTouchDragging = true;
+                    el.style.opacity = '0.7';
+                    e.preventDefault();
+                }
+            });
+
+            el.addEventListener('touchmove', (e) => {
+                if (this.currentTool === 'pointer' && isTouchDragging) {
+                    const touch = e.touches[0];
+                    const deltaX = (touch.clientX - touchStartX) / this.zoomLevel;
+                    const deltaY = (touch.clientY - touchStartY) / this.zoomLevel;
+
+                    d.x = deviceStartX + deltaX;
+                    d.y = deviceStartY + deltaY;
+
+                    // Update position in real-time
+                    el.style.left = `${d.x * this.zoomLevel}px`;
+                    el.style.top = `${d.y * this.zoomLevel}px`;
+
+                    e.preventDefault();
+                }
+            });
+
+            el.addEventListener('touchend', (e) => {
+                if (this.currentTool === 'pointer' && isTouchDragging) {
+                    el.style.opacity = '1';
+                    isTouchDragging = false;
+                    this.render(); // Re-render to update connections
+                }
+            });
+
             workspace.appendChild(el);
         });
 
@@ -511,8 +666,8 @@ const UI = {
                 // Text Move
                 const lbl = sim.textLabels.find(l => l.id == moveTextId);
                 if (lbl) {
-                    lbl.x = x;
-                    lbl.y = y;
+                    lbl.x = x / this.zoomLevel;
+                    lbl.y = y / this.zoomLevel;
                     this.render();
                 }
             } else if (this.draggedType) {
@@ -523,45 +678,7 @@ const UI = {
 
 
         // Render Connections
-        connLayer.innerHTML = '';
-        const drawn = new Set();
-
-        sim.devices.forEach(d1 => {
-            d1.interfaces.forEach(i1 => {
-                if (i1.connectedDeviceId) {
-                    const d2 = sim.getDevice(i1.connectedDeviceId);
-                    const i2 = d2.getInterface(i1.connectedInterfaceName);
-
-                    if (!d2 || !i2) return;
-
-                    const key = [d1.id, d2.id].sort().join('-');
-                    if (drawn.has(key)) return;
-
-                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                    line.setAttribute('x1', d1.x); line.setAttribute('y1', d1.y);
-                    line.setAttribute('x2', d2.x); line.setAttribute('y2', d2.y);
-
-                    if (i1.type === 'serial') {
-                        line.setAttribute('stroke', '#ef4444');
-                        line.setAttribute('stroke-dasharray', '5,5');
-                        line.setAttribute('stroke-width', '2');
-                    } else {
-                        line.setAttribute('stroke', '#10b981'); // Cable itself is green/black physics
-                        line.setAttribute('stroke-width', '2');
-                    }
-                    connLayer.appendChild(line);
-
-                    // Link Lights Status - Check Interface Status using internal property
-                    const status1 = i1.status || 'up'; // Default 'up' for old devs
-                    const status2 = i2.status || 'up';
-
-                    this.drawLinkLight(connLayer, d1.x, d1.y, d2.x, d2.y, status1);
-                    this.drawLinkLight(connLayer, d2.x, d2.y, d1.x, d1.y, status2);
-
-                    drawn.add(key);
-                }
-            });
-        });
+        this.renderConnections();
     },
 
     drawLinkLight(svg, x1, y1, x2, y2, status) {
@@ -968,6 +1085,128 @@ const UI = {
                 display.textContent = `${hours}:${minutes}:${seconds}`;
             }
         }, 1000);
+    },
+
+    // --- Sidebar Toggle ---
+    toggleSidebar() {
+        this.sidebarCollapsed = !this.sidebarCollapsed;
+        const sidebar = document.querySelector('aside');
+        const footer = document.querySelector('.sidebar-footer');
+
+        if (this.sidebarCollapsed) {
+            sidebar.classList.add('collapsed');
+            if (footer) footer.style.width = '0';
+        } else {
+            sidebar.classList.remove('collapsed');
+            const sidebarWidth = window.innerWidth <= 768 ? '220px' : '250px';
+            if (footer) footer.style.width = sidebarWidth;
+        }
+    },
+
+    // --- Zoom Controls ---
+    zoomIn() {
+        if (this.zoomLevel < 2) {
+            this.zoomLevel += 0.1;
+            this.applyZoom();
+        }
+    },
+
+    zoomOut() {
+        if (this.zoomLevel > 0.3) {
+            this.zoomLevel -= 0.1;
+            this.applyZoom();
+        }
+    },
+
+    resetZoom() {
+        this.zoomLevel = 1;
+        this.applyZoom();
+    },
+
+    applyZoom() {
+        const workspace = document.getElementById('workspace');
+        workspace.style.backgroundSize = `${30 * this.zoomLevel}px ${30 * this.zoomLevel}px`;
+
+        // Apply zoom to all devices and connections
+        const devices = workspace.querySelectorAll('.device');
+        devices.forEach(device => {
+            const id = parseInt(device.dataset.deviceId);
+            const d = sim.getDevice(id);
+            if (d) {
+                device.style.left = `${d.x * this.zoomLevel}px`;
+                device.style.top = `${d.y * this.zoomLevel}px`;
+                device.style.transform = `translate(-50%, -50%) scale(${this.zoomLevel})`;
+            }
+        });
+
+        // Apply zoom to text labels
+        const labels = workspace.querySelectorAll('.text-label');
+        labels.forEach((label, idx) => {
+            const lbl = sim.textLabels[idx];
+            if (lbl) {
+                label.style.left = `${lbl.x * this.zoomLevel}px`;
+                label.style.top = `${lbl.y * this.zoomLevel}px`;
+                label.style.transform = `scale(${this.zoomLevel})`;
+                label.style.transformOrigin = 'top left';
+            }
+        });
+
+        // Redraw connections with zoom
+        this.renderConnections();
+        this.updateZoomDisplay();
+    },
+
+    updateZoomDisplay() {
+        const display = document.getElementById('zoom-level');
+        if (display) {
+            display.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+        }
+    },
+
+    renderConnections() {
+        const connLayer = document.getElementById('connections-layer');
+        connLayer.innerHTML = '';
+        const drawn = new Set();
+
+        sim.devices.forEach(d1 => {
+            d1.interfaces.forEach(i1 => {
+                if (i1.connectedDeviceId) {
+                    const d2 = sim.getDevice(i1.connectedDeviceId);
+                    const i2 = d2?.getInterface(i1.connectedInterfaceName);
+
+                    if (!d2 || !i2) return;
+
+                    const key = [d1.id, d2.id].sort().join('-');
+                    if (drawn.has(key)) return;
+
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', d1.x * this.zoomLevel);
+                    line.setAttribute('y1', d1.y * this.zoomLevel);
+                    line.setAttribute('x2', d2.x * this.zoomLevel);
+                    line.setAttribute('y2', d2.y * this.zoomLevel);
+
+                    if (i1.type === 'serial') {
+                        line.setAttribute('stroke', '#ef4444');
+                        line.setAttribute('stroke-dasharray', '5,5');
+                        line.setAttribute('stroke-width', '2');
+                    } else {
+                        line.setAttribute('stroke', '#10b981');
+                        line.setAttribute('stroke-width', '2');
+                    }
+                    connLayer.appendChild(line);
+
+                    const status1 = i1.status || 'up';
+                    const status2 = i2.status || 'up';
+
+                    this.drawLinkLight(connLayer, d1.x * this.zoomLevel, d1.y * this.zoomLevel,
+                        d2.x * this.zoomLevel, d2.y * this.zoomLevel, status1);
+                    this.drawLinkLight(connLayer, d2.x * this.zoomLevel, d2.y * this.zoomLevel,
+                        d1.x * this.zoomLevel, d1.y * this.zoomLevel, status2);
+
+                    drawn.add(key);
+                }
+            });
+        });
     }
 };
 
@@ -986,3 +1225,6 @@ document.addEventListener('keydown', (e) => {
 
 UI.init();
 UI.startUptime();
+
+// Set current year in footer
+document.getElementById('current-year').textContent = new Date().getFullYear();
