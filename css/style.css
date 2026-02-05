@@ -229,6 +229,8 @@ aside.collapsed {
     height: 100%;
     pointer-events: none;
     z-index: 0;
+    overflow: visible;
+    /* Fix for clipped lines */
 }
 
 /* Device on Canvas */
@@ -1421,7 +1423,8 @@ body.light-mode .zoom-controls {
     }
 
     /* Hide button text, keep icons */
-    .btn-primary {
+    /* Hide button text, keep icons - BUT keep modal buttons visible */
+    .btn-primary:not(.modal .btn-primary) {
         padding: 6px 8px;
         font-size: 0;
     }
@@ -1591,18 +1594,104 @@ body.light-mode .zoom-controls {
     }
 }
 
-@media (max-width: 480px) {
+/* ... Existing Code ... */
 
-    /* Small Mobile */
+/* Text Label Delete Button - Force visibility */
+/* Text Label Delete Button - Mode Specific */
+.text-label-delete-btn {
+    background-color: transparent !important;
+    color: white !important;
+    /* White in Dark Mode */
+    border: none;
+    font-size: 0.9rem;
+    /* Default size */
+    padding: 0;
+    width: auto;
+    height: auto;
+    min-width: 25px;
+    box-shadow: none;
+}
+
+/* Light Mode Override for Trash Icon */
+body.light-mode .text-label-delete-btn {
+    color: #64748b !important;
+    /* Gray (Slate 500) */
+    font-size: 0.8rem;
+    /* Smaller */
+}
+
+/* Mobile Optimizations */
+@media (max-width: 768px) {
+    aside {
+        position: fixed !important;
+        height: 100vh !important;
+        width: 100% !important;
+        max-width: 300px !important;
+        top: 0 !important;
+        padding-top: 75px;
+        /* Push content down (60px header + 15px padding) */
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+        z-index: 90 !important;
+    }
+
+    aside.collapsed {
+        transform: translateX(-100%) !important;
+    }
+
+    .sidebar-section {
+        padding: 15px;
+    }
+
+    /* Make connection lines thicker on small screens */
+    line {
+        stroke-width: 4px !important;
+    }
+
     .zoom-controls span {
         display: none;
     }
+}
 
+/* Light Mode Layout Fixes */
+body.light-mode header {
+    z-index: 110;
+    /* Ensure header is above sidebar content (90) */
+    position: relative;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+body.light-mode aside {
+    z-index: 40;
+}
+
+/* Connection Line Base */
+line {
+    stroke: var(--primary);
+    stroke-width: 2;
+    transition: stroke-width 0.2s;
+}
+
+/* Ghost Element for Touch Drag */
+.ghost-drag {
+    position: fixed;
+    pointer-events: none;
+    opacity: 0.8;
+    z-index: 10000;
+    transform: translate(-50%, -50%);
+    background: var(--bg-panel);
+    padding: 10px;
+    border: 2px solid var(--primary);
+    border-radius: 8px;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+@media (max-width: 480px) {
+
+    /* Small Mobile */
     .footer-section:first-child {
         font-size: 0.6rem;
-    }
-
-    .footer-section:first-child i {
-        display: none;
     }
 }

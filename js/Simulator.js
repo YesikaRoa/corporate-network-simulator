@@ -314,6 +314,78 @@ const UI = {
         this.draggedType = type;
         e.dataTransfer.effectAllowed = 'copy';
     },
+
+    // --- Touch Drag & Drop Implementation ---
+    touchDragItem: null,
+    touchGhost: null,
+
+    handleTouchDragStart(e, type) {
+        e.preventDefault(); // Prevent scrolling
+        const touch = e.touches[0];
+        this.touchDragItem = type;
+
+        // Create Ghost Element
+        this.touchGhost = document.createElement('div');
+        this.touchGhost.className = 'ghost-drag';
+        this.touchGhost.innerHTML = `<i class="fa-solid ${ICON_MAP[type]}"></i> <span>${type}</span>`;
+        this.touchGhost.style.left = `${touch.clientX}px`;
+        this.touchGhost.style.top = `${touch.clientY}px`;
+        document.body.appendChild(this.touchGhost);
+
+        // Attach global move/end listeners
+        document.addEventListener('touchmove', this._touchMoveHandler, { passive: false });
+        document.addEventListener('touchend', this._touchEndHandler);
+    },
+
+    _touchMoveHandler: (e) => UI.handleTouchMove(e),
+    _touchEndHandler: (e) => UI.handleTouchEnd(e),
+
+    handleTouchMove(e) {
+        if (!this.touchGhost) return;
+        e.preventDefault();
+        const touch = e.touches[0];
+        this.touchGhost.style.left = `${touch.clientX}px`;
+        this.touchGhost.style.top = `${touch.clientY}px`;
+    },
+
+    handleTouchEnd(e) {
+        if (!this.touchDragItem) return;
+
+        // Clean up listeners
+        document.removeEventListener('touchmove', this._touchMoveHandler);
+        document.removeEventListener('touchend', this._touchEndHandler);
+
+        // Remove ghost
+        if (this.touchGhost) {
+            this.touchGhost.remove();
+            this.touchGhost = null;
+        }
+
+        // Check if dropped on workspace
+        const touch = e.changedTouches[0];
+        const ws = document.getElementById('workspace');
+        const rect = ws.getBoundingClientRect();
+
+        // Check bounds
+        if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
+            touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+
+            const x = (touch.clientX - rect.left) / this.zoomLevel;
+            const y = (touch.clientY - rect.top) / this.zoomLevel;
+
+            sim.addDevice(this.touchDragItem, x, y);
+            this.render();
+            this.showToast('Dispositivo agregado', 'success');
+
+            // If on mobile, auto-close sidebar after drop
+            if (window.innerWidth <= 768 && !this.sidebarCollapsed) {
+                this.toggleSidebar();
+            }
+        }
+
+        this.touchDragItem = null;
+    },
+
     handleDragOver(e) { e.preventDefault(); },
     handleDrop(e) {
         e.preventDefault();
@@ -500,7 +572,9 @@ const UI = {
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'text-label-delete-btn';
             deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
-            deleteBtn.onclick = (e) => {
+
+            const deleteAction = (e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 this.showConfirm('¿Eliminar etiqueta?', () => {
                     sim.textLabels = sim.textLabels.filter(l => l.id !== lbl.id);
@@ -508,6 +582,10 @@ const UI = {
                     this.showToast('Etiqueta eliminada', 'success');
                 });
             };
+
+            deleteBtn.onclick = deleteAction;
+            // Touch specific for mobile to avoid drag conflict
+            deleteBtn.ontouchstart = deleteAction;
 
             container.appendChild(el);
             container.appendChild(deleteBtn);
@@ -606,6 +684,7 @@ const UI = {
             // Touch support for mobile
             let touchStartX, touchStartY, deviceStartX, deviceStartY;
             let isTouchDragging = false;
+            let hasMoved = false; // Track if valid drag occurred
 
             el.addEventListener('touchstart', (e) => {
                 if (this.currentTool === 'pointer') {
@@ -615,7 +694,9 @@ const UI = {
                     deviceStartX = d.x;
                     deviceStartY = d.y;
                     isTouchDragging = true;
-                    el.style.opacity = '0.7';
+                    hasMoved = false;
+                    // Dont reduce opacity immediately so taps look normal
+                    // el.style.opacity = '0.7'; 
                     e.preventDefault();
                 }
             });
@@ -623,16 +704,24 @@ const UI = {
             el.addEventListener('touchmove', (e) => {
                 if (this.currentTool === 'pointer' && isTouchDragging) {
                     const touch = e.touches[0];
-                    const deltaX = (touch.clientX - touchStartX) / this.zoomLevel;
-                    const deltaY = (touch.clientY - touchStartY) / this.zoomLevel;
+                    const diffX = Math.abs(touch.clientX - touchStartX);
+                    const diffY = Math.abs(touch.clientY - touchStartY);
 
-                    d.x = deviceStartX + deltaX;
-                    d.y = deviceStartY + deltaY;
+                    // Threshold to consider it a drag
+                    if (diffX > 5 || diffY > 5) {
+                        hasMoved = true;
+                        el.style.opacity = '0.7'; // Now show drag effect
 
-                    // Update position in real-time
-                    el.style.left = `${d.x * this.zoomLevel}px`;
-                    el.style.top = `${d.y * this.zoomLevel}px`;
+                        const deltaX = (touch.clientX - touchStartX) / this.zoomLevel;
+                        const deltaY = (touch.clientY - touchStartY) / this.zoomLevel;
 
+                        d.x = deviceStartX + deltaX;
+                        d.y = deviceStartY + deltaY;
+
+                        // Update position in real-time
+                        el.style.left = `${d.x * this.zoomLevel}px`;
+                        el.style.top = `${d.y * this.zoomLevel}px`;
+                    }
                     e.preventDefault();
                 }
             });
@@ -641,7 +730,13 @@ const UI = {
                 if (this.currentTool === 'pointer' && isTouchDragging) {
                     el.style.opacity = '1';
                     isTouchDragging = false;
-                    this.render(); // Re-render to update connections
+
+                    if (hasMoved) {
+                        this.render(); // Re-render to update connections
+                    } else {
+                        // It was a tap!
+                        this.handleDeviceClick(e, d.id);
+                    }
                 }
             });
 
@@ -1100,6 +1195,26 @@ const UI = {
             sidebar.classList.remove('collapsed');
             const sidebarWidth = window.innerWidth <= 768 ? '220px' : '250px';
             if (footer) footer.style.width = sidebarWidth;
+
+            // Add click outside listener for mobile
+            if (window.innerWidth <= 768) {
+                setTimeout(() => {
+                    document.addEventListener('click', this.closeSidebarOutside);
+                }, 0);
+            }
+        }
+    },
+
+    closeSidebarOutside(e) {
+        const sidebar = document.querySelector('aside');
+        const toggleBtn = document.querySelector('.sidebar-toggle');
+
+        // Ignore clicks inside sidebar or on the toggle button
+        if (!sidebar.contains(e.target) && !toggleBtn.contains(e.target)) {
+            if (!sidebar.classList.contains('collapsed')) {
+                UI.toggleSidebar();
+                document.removeEventListener('click', UI.closeSidebarOutside);
+            }
         }
     },
 
