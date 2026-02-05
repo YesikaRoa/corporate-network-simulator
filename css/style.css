@@ -1650,6 +1650,11 @@ body.light-mode .text-label-delete-btn {
     .zoom-controls span {
         display: none;
     }
+
+    /* Hide Visual Ping Button on mobile */
+    #btn-visual-ping {
+        display: none !important;
+    }
 }
 
 /* Light Mode Layout Fixes */
@@ -1694,4 +1699,71 @@ line {
     .footer-section:first-child {
         font-size: 0.6rem;
     }
+}
+
+/* Routing Table & Packet Animation Enhancements */
+.routing-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 0.95em;
+}
+
+.routing-table th,
+.routing-table td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.routing-table th {
+    background-color: var(--bg-hover, rgba(255, 255, 255, 0.05));
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+.routing-table td {
+    color: var(--text-muted);
+}
+
+.badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: bold;
+}
+
+.badge-success {
+    background-color: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+}
+
+/* Packet Animation */
+/* Packet Animation */
+.packet {
+    position: absolute;
+    width: auto;
+    height: auto;
+    background-color: transparent;
+    /* Removed circle background */
+    border-radius: 0;
+    z-index: 9999;
+    box-shadow: none;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    transition: left 1.5s ease-in-out, top 1.5s ease-in-out;
+    color: #ffffff;
+    /* White Icon */
+    font-size: 20px;
+    filter: drop-shadow(0 0 5px #10b981) drop-shadow(0 0 10px #059669);
+    /* Dark Green Glow */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Light Mode adaptations for table */
+body.light-mode .routing-table th {
+    background-color: #f1f5f9;
+    color: #0f172a;
 }
