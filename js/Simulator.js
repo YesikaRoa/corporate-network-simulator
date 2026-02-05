@@ -266,6 +266,84 @@ class NetworkSimulator {
         }
         return false;
     }
+
+    getRoute(sourceId, targetId) {
+        const source = this.getDevice(sourceId);
+        const target = this.getDevice(targetId);
+        if (!source || !target) return null;
+
+        // Path finding logic suitable for this specific simulator (L3 logic)
+        // Similar to checkRoutingPath but returns array of Device objects
+
+        // 1. Identify Start Router
+        let startRouter = null;
+        let prefix = [];
+
+        if (source.type === 'Router') {
+            startRouter = source;
+            prefix.push(source);
+        } else {
+            prefix.push(source);
+            if (NetworkUtils.isSameSubnet(source.ip, target.ip, source.mask)) {
+                // Direct connection (Switch or direct cable)
+                // For animation, we should ideally find the physical path (Switches)
+                // But for now, direct hop logic: Source -> Target
+                return [source, target];
+            }
+            if (!source.gateway) return null;
+            startRouter = this.devices.find(d => d.type === 'Router' && d.interfaces.some(i => i.ip === source.gateway));
+            // Add intermediate switches if possible, but for now just logical hops
+            if (startRouter) prefix.push(startRouter);
+            else return null; // No gateway found
+        }
+
+        // BFS with Path Reconstruction
+        let queue = [{ node: startRouter, path: [startRouter] }];
+        let visited = new Set([startRouter.id]);
+
+        while (queue.length > 0) {
+            let { node: current, path } = queue.shift();
+
+            // Check if current can reach target directly
+            const targetIPs = target.type === 'Router' ? target.interfaces.map(i => i.ip).filter(ip => ip) : [target.ip];
+            let directlyConnected = false;
+            for (let iface of current.interfaces) {
+                if (!iface.ip || !iface.mask) continue;
+                for (let tip of targetIPs) {
+                    if (tip && NetworkUtils.isSameSubnet(iface.ip, tip, iface.mask)) {
+                        directlyConnected = true;
+                        break;
+                    }
+                }
+            }
+
+            if (directlyConnected) {
+                // Determine if we need to add the target as the final step
+                // If it's the router itself? No, target is destination.
+                if (target.id !== current.id) {
+                    return [...prefix.slice(0, prefix.indexOf(path[0])), ...path, target];
+                }
+                return [...prefix.slice(0, prefix.indexOf(path[0])), ...path];
+            }
+
+            // Neighbors
+            for (let iface of current.interfaces) {
+                if (iface.connectedDeviceId) {
+                    const neighbor = this.getDevice(iface.connectedDeviceId);
+                    if (neighbor && neighbor.type === 'Router' && !visited.has(neighbor.id)) {
+                        const neighborIface = neighbor.getInterface(iface.connectedInterfaceName);
+                        if (neighborIface && neighborIface.ip && iface.ip && iface.mask) {
+                            if (NetworkUtils.isSameSubnet(iface.ip, neighborIface.ip, iface.mask)) {
+                                visited.add(neighbor.id);
+                                queue.push({ node: neighbor, path: [...path, neighbor] });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
 }
 
 // UI Controller
@@ -843,6 +921,16 @@ const UI = {
                      </div>
                   `;
             }
+
+            if (d.type === 'Router') {
+                html += `
+                    <div style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 10px;">
+                        <button class="btn" style="width:100%;" onclick="UI.showRoutingTable(${d.id})">
+                            <i class="fa-solid fa-table-list"></i> Ver Tabla de Enrutamiento
+                        </button>
+                    </div>
+                `;
+            }
         }
 
         body.innerHTML = html;
@@ -912,7 +1000,84 @@ const UI = {
         }
     },
 
-    openPingModal() {
+    showRoutingTable(id) {
+        const d = sim.getDevice(id);
+        if (!d || d.type !== 'Router') return;
+
+        const container = document.getElementById('routing-table-content');
+
+        let html = `
+            <div style="margin-bottom: 15px;">
+                <strong>Router:</strong> ${d.name}
+            </div>
+            <table class="routing-table">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Red</th>
+                        <th>Interfaz</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        // 1. Directly Connected Networks
+        d.interfaces.forEach(iface => {
+            if (iface.ip && iface.mask && iface.status === 'up') {
+                // Calculate Network Address
+                const ipLong = NetworkUtils.ipToLong(iface.ip);
+                const maskLong = NetworkUtils.ipToLong(iface.mask);
+                const netLong = ipLong & maskLong;
+
+                // Convert back to string (Manual implementation or helper needed? 
+                // Let's do a quick inline helper or add to NetworkUtils later. 
+                // For now, I'll add a helper inside this scope or just assume NetworkUtils can do it if I add it.
+                // Actually, let's just do it inline to be safe and quick.)
+                const netAddress = [
+                    (netLong >>> 24),
+                    (netLong >> 16 & 255),
+                    (netLong >> 8 & 255),
+                    (netLong & 255)
+                ].join('.');
+
+                // Count bits for CIDR
+                let cidr = 0;
+                let m = maskLong;
+                while (m !== 0) {
+                    if (m & 1) cidr++; // This counts trailing 1s if reversed...
+                    // Standard netmask is high bits. 
+                    // Actually, a simpler way for standard text masks:
+                    // Just count '1's in binary string.
+                    m = m >>> 1; // Unsigned right shift prevents infinite loop
+                }
+                // Correction: The above counts 1s anywhere. For a valid mask (1111...000), it works.
+                // Alternative safer approach using split used elsewhere:
+                cidr = iface.mask.split('.').reduce((acc, octet) => acc + (parseInt(octet) >>> 0).toString(2).split('1').length - 1, 0);
+
+                html += `
+                    <tr>
+                        <td><span class="badge badge-success">C</span></td>
+                        <td>${netAddress}/${cidr}</td>
+                        <td>${iface.name}</td>
+                    </tr>
+                `;
+            }
+        });
+
+        html += `
+                </tbody>
+            </table>
+            <div style="margin-top:10px; font-size:0.9em; color:var(--text-muted);">
+                <small>C - Conectada, S - Estática, R - RIP, O - OSPF</small>
+            </div>
+        `;
+
+        container.innerHTML = html;
+        this.closeModals(); // Close config modal if open
+        document.getElementById('routing-modal').classList.add('active');
+    },
+
+    openPingModal(preSelectedSource = null, preSelectedTarget = null) {
         const sourceSelect = document.getElementById('ping-source');
         const targetSelect = document.getElementById('ping-target');
         sourceSelect.innerHTML = '';
@@ -926,9 +1091,147 @@ const UI = {
             targetSelect.innerHTML += opt;
         });
 
+        if (preSelectedSource) sourceSelect.value = preSelectedSource;
+        if (preSelectedTarget) targetSelect.value = preSelectedTarget;
+
+        // Add Visual Ping Button if not exists
+        const body = document.querySelector('#ping-modal .modal-body');
+        if (!document.getElementById('btn-visual-ping')) {
+            const btnContainer = document.createElement('div');
+            btnContainer.style.marginTop = '10px';
+            btnContainer.innerHTML = `
+                <button id="btn-visual-ping" class="btn" style="width:100%; border-color:var(--accent); color:var(--accent);" onclick="UI.runVisualPing()">
+                    <i class="fa-solid fa-eye"></i> Simulación Visual (Animación)
+                </button>
+            `;
+            // Insert before the output console
+            const output = document.getElementById('ping-output');
+            body.insertBefore(btnContainer, output);
+        }
+
         document.getElementById('ping-output').innerHTML = '> Esperando comando...';
         document.getElementById('ping-modal').classList.add('active');
     },
+
+    runVisualPing() {
+        const sId = parseInt(document.getElementById('ping-source').value);
+        const tId = parseInt(document.getElementById('ping-target').value);
+
+        // 1. Check basic valid logic
+        const s = sim.getDevice(sId);
+        const t = sim.getDevice(tId);
+        if (!s || !t) return;
+
+        if (sId === tId) {
+            this.showToast('Error: Origen y Destino son el mismo dispositivo', 'error');
+            return;
+        }
+
+        this.closeModals();
+        this.showToast('Iniciando rastreo de paquete...', 'info');
+
+        // 2. Calculate Route
+        const route = sim.getRoute(sId, tId);
+
+        if (route && route.length >= 2) {
+            // Let's use checkPhysicalPath logic but tracking path.
+            const physicalPath = this.getPhysicalPath(sId, tId);
+            if (physicalPath) {
+                this.animatePacket(physicalPath, sId, tId);
+            } else {
+                this.showToast('Error: No hay ruta física válida para animación', 'error');
+                // Fallback to ping
+                setTimeout(() => {
+                    UI.openPingModal(sId, tId);
+                    UI.runPing();
+                }, 1000);
+            }
+
+        } else {
+            // Fallback for simple connections or direct failure
+            const physicalPath = this.getPhysicalPath(sId, tId);
+            if (physicalPath) this.animatePacket(physicalPath, sId, tId);
+            else {
+                this.showToast('No se pudo trazar una ruta visual.', 'error');
+                setTimeout(() => {
+                    UI.openPingModal(sId, tId);
+                }, 1000);
+            }
+        }
+    },
+
+    getPhysicalPath(startId, endId) {
+        // BFS for physical connections
+        let queue = [[startId]];
+        let visited = new Set([startId]);
+
+        while (queue.length > 0) {
+            let path = queue.shift();
+            let curr = path[path.length - 1];
+
+            if (curr === endId) return path;
+
+            const device = sim.getDevice(curr);
+            if (device) {
+                for (let neighborId of device.connections) {
+                    if (!visited.has(neighborId)) {
+                        visited.add(neighborId);
+                        queue.push([...path, neighborId]);
+                    }
+                }
+            }
+        }
+        return null;
+    },
+
+    animatePacket(pathIds, finalSourceId, finalTargetId) {
+        const workspace = document.getElementById('workspace');
+        const packet = document.createElement('div');
+        packet.className = 'packet';
+        packet.innerHTML = '<i class="fa-solid fa-envelope"></i>'; // Add icon
+
+        // Start Position
+        const startDevice = sim.getDevice(pathIds[0]);
+        packet.style.left = `${startDevice.x * this.zoomLevel}px`;
+        packet.style.top = `${startDevice.y * this.zoomLevel}px`;
+
+        workspace.appendChild(packet);
+
+        let step = 0;
+        const totalSteps = pathIds.length;
+
+        const moveNext = () => {
+            step++;
+            if (step >= totalSteps) {
+                // Done
+                packet.remove();
+                this.showToast('Paquete entregado con éxito', 'success');
+                // Trigger actual successful ping result in modal?
+                // Or just show toast. User wanted "Wow effect", toast is okay.
+                // Re-open ping modal to show result?
+                setTimeout(() => {
+                    UI.openPingModal(finalSourceId, finalTargetId);
+                    // Auto-run ping to show text result
+                    UI.runPing();
+                }, 500);
+                return;
+            }
+
+            const nextId = pathIds[step];
+            const nextDevice = sim.getDevice(nextId);
+
+            packet.style.left = `${nextDevice.x * this.zoomLevel}px`;
+            packet.style.top = `${nextDevice.y * this.zoomLevel}px`;
+
+            // Wait for transition
+            // 1500ms transition + 100ms pause = 1600ms total wait per hop
+            setTimeout(moveNext, 1600);
+        };
+
+        // Start animation loop
+        setTimeout(moveNext, 100);
+    },
+
 
     runPing() {
         const sId = parseInt(document.getElementById('ping-source').value);
