@@ -51,15 +51,18 @@
             <div class="sidebar-section">
                 <div class="sidebar-title">Dispositivos Finales</div>
                 <div class="component-grid">
-                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'PC')">
+                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'PC')"
+                        ontouchstart="UI.handleTouchDragStart(event, 'PC')">
                         <i class="fa-solid fa-desktop"></i>
                         <span>PC</span>
                     </div>
-                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'Laptop')">
+                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'Laptop')"
+                        ontouchstart="UI.handleTouchDragStart(event, 'Laptop')">
                         <i class="fa-solid fa-laptop"></i>
                         <span>Laptop</span>
                     </div>
-                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'Server')">
+                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'Server')"
+                        ontouchstart="UI.handleTouchDragStart(event, 'Server')">
                         <i class="fa-solid fa-server"></i>
                         <span>Servidor</span>
                     </div>
@@ -68,11 +71,13 @@
             <div class="sidebar-section">
                 <div class="sidebar-title">Red & Enlaces</div>
                 <div class="component-grid">
-                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'Router')">
+                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'Router')"
+                        ontouchstart="UI.handleTouchDragStart(event, 'Router')">
                         <i class="fa-solid fa-wifi"></i>
                         <span>Router</span>
                     </div>
-                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'Switch')">
+                    <div class="component-item" draggable="true" ondragstart="UI.handleDragStart(event, 'Switch')"
+                        ontouchstart="UI.handleTouchDragStart(event, 'Switch')">
                         <i class="fa-solid fa-code-branch"></i>
                         <span>Switch</span>
                     </div>
